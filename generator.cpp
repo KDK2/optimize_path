@@ -2,7 +2,8 @@
 #include "math.h"
 
 #define RAD(X) ((X)*(M_PI/180.0))
-Generator::Generator(const info in, const Sensor &sen, const double *pos, const double *gpos)
+Generator::Generator(const info in, const Sensor &sen, const double *pos, const double *gpos):
+    rand_gen(std::random_device()())
 {
     ip=in;
     s=new Sensor(sen);
@@ -20,14 +21,15 @@ Generator::Generator(const info in, const Sensor &sen, const double *pos, const 
     m_bLocalMin=false;
 }
 
-Generator::Generator(const Generator &gen)
+Generator::Generator(const Generator &gen, Sensor &sen, const double *pos):
+    rand_gen(std::random_device()())
 {
     ip=gen.ip;
-    s=new Sensor(*gen.s);
+    s=new Sensor(sen);
 
-    m_rPos[INDEX_X]=gen.m_rPos[INDEX_X];
-    m_rPos[INDEX_Y]=gen.m_rPos[INDEX_Y];
-    normalizeAngle(gen.m_rPos[INDEX_Q],m_rPos[INDEX_Q]);
+    m_rPos[INDEX_X]=pos[INDEX_X];
+    m_rPos[INDEX_Y]=pos[INDEX_Y];
+    normalizeAngle(pos[INDEX_Q],m_rPos[INDEX_Q]);
 
     m_gGoal[INDEX_X]=gen.m_gGoal[INDEX_X];
     m_gGoal[INDEX_Y]=gen.m_gGoal[INDEX_Y];
@@ -38,7 +40,8 @@ Generator::Generator(const Generator &gen)
     m_bLocalMin=false;
 }
 
-Generator::Generator(const Generator &gen, const double *pos)
+Generator::Generator(const Generator &gen, const double *pos):
+    rand_gen(std::random_device()())
 {
     ip=gen.ip;
     s=new Sensor(*gen.s);
@@ -58,7 +61,11 @@ Generator::Generator(const Generator &gen, const double *pos)
 
 Generator::~Generator()
 {
-    delete s;
+    if(s!=nullptr)
+    {
+        delete s;
+        s=nullptr;
+    }
 }
 
 void Generator::setSensor(Sensor &sen)
@@ -95,6 +102,9 @@ void Generator::setPos(double *pos)
     m_rPos[INDEX_Y]=pos[INDEX_Y];
     normalizeAngle(pos[INDEX_Q],m_rPos[INDEX_Q]);
 
+//    m_rPos[INDEX_X]=addNoise(m_rPos[INDEX_X],0.001);
+//    m_rPos[INDEX_Y]=addNoise(m_rPos[INDEX_Y],0.001);
+//    m_rPos[INDEX_Q]=addNoise(m_rPos[INDEX_Q],RAD(0.1));
     m_rPath.clear();
     m_rPath.push_back({m_rPos[INDEX_X],m_rPos[INDEX_Y],m_rPos[INDEX_Q]});
 }
@@ -177,6 +187,36 @@ double Generator::addNoise(double src, double sigma)
     return src+d(rand_gen);
 }
 
+double Generator::addRealNoise(double src, double sigma)
+{
+    std::uniform_real_distribution<double> d(0.0,sigma);
+    return src+d(rand_gen);
+}
+
+int Generator::rndInt(int range)
+{
+    std::uniform_int_distribution<> d(0,range-1);
+    return d(rand_gen);
+}
+
+double Generator::rndDouble(double min, double max)
+{
+    std::uniform_real_distribution<double> d(min,max);
+    return d(rand_gen);
+}
+
+void Generator::setDD(const std::vector<double> &weights)
+{
+    delete dd;
+    dd=nullptr;
+    dd=new std::discrete_distribution<>(weights.begin(),weights.end());
+}
+
+int Generator::rndDD()
+{
+    return (*dd)(rand_gen);
+}
+
 bool Generator::isLocalMin()
 {
     return m_bLocalMin;
@@ -205,8 +245,8 @@ void Generator::attForce(double *pos, double *f)
 
     if(dist>cutoff)
     {
-        f[INDEX_X]=-((k_vg*q_v*q_g))*(1.0/(dist*dist))*(dx/dist);
-        f[INDEX_Y]=-((k_vg*q_v*q_g))*(1.0/(dist*dist))*(dy/dist);
+        f[INDEX_X]=-((k_vg*q_v*q_g))*(dx/dist);
+        f[INDEX_Y]=-((k_vg*q_v*q_g))*(dy/dist);
     }
 
     else
@@ -226,8 +266,8 @@ void Generator::repForce(int i, double *f)
     double v_sp[2]={s->is[i].sense.vx,s->is[i].sense.vy};
     if(dist<d_o && 0<dist)
     {
-        f[INDEX_X]=((k_vo*q_v*q_o)/(dist*dist))*(v_sp[INDEX_X]);
-        f[INDEX_Y]=((k_vo*q_v*q_o)/(dist*dist))*(v_sp[INDEX_Y]);
+        f[INDEX_X]=((k_vo*q_v*q_o)/(dist))*(v_sp[INDEX_X]);
+        f[INDEX_Y]=((k_vo*q_v*q_o)/(dist))*(v_sp[INDEX_Y]);
     }
     else
     {
@@ -282,10 +322,28 @@ void Generator::checkMaxRef(double ref, double &dst)
     double q=m_rPos[INDEX_Q];
 
     max_error=ip.m_param.eparam.theta_max;
-    normalizeAngle(abs(ref-q),error);
-    if(error<=max_error)
+    normalizeAngle(ref-q,error);
+    if(abs(error)<=max_error)
     {
-        ret=(max_error-error)/max_error;
+        ret=(max_error-abs(error))/max_error;
+    }
+    else
+    {
+        ret=0.0;
+    }
+    dst=ret;
+}
+
+void Generator::checkMaxRef(double ref, double *src, double &dst)
+{
+    double ret,error,max_error;
+    double q=src[INDEX_Q];
+
+    max_error=ip.m_param.eparam.theta_max;
+    normalizeAngle(ref-q,error);
+    if(abs(error)<=max_error)
+    {
+        ret=(max_error-abs(error))/max_error;
     }
     else
     {
@@ -310,14 +368,19 @@ void Generator::predict(bool bStag)
         double tForce[2]={0.0,0.0};
         double ref=0.0;
         double x,y,q;
+
         s->sense(pos);
         force(pos,tForce);
 
-        ref=atan2(tForce[INDEX_X],tForce[INDEX_Y]);
+        ref=atan2(tForce[INDEX_Y],tForce[INDEX_X]);
         normalizeAngle(ref,q);
         x=px+delta*cos(q);
         y=py+delta*sin(q);
         m_rPath.push_back({x,y,q});
+        double gdx=m_gGoal[INDEX_X]-x;
+        double gdy=m_gGoal[INDEX_Y]-y;
+
+        if(sqrt(gdx*gdx+gdy*gdy)<0.1)   isArrived=true;
     }
 }
 
@@ -349,6 +412,6 @@ void Generator::detLocalmin()
         varianceX+=pow(m_rPath.at(i).px-mean_x,2);
         varianceY+=pow(m_rPath.at(i).py-mean_y,2);
     }
-    // varianceX/=m_rPath.size();
-    // varianceY/=m_rPath.size();
+     varianceX/=m_rPath.size();
+     varianceY/=m_rPath.size();
 }

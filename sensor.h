@@ -15,7 +15,8 @@
 #define RIGHT_BOTTOM_X 2
 #define RIGHT_BOTTOM_Y 3
 
-#define BYTE unsigned char
+//#define BYTE unsigned char
+#include "stdafx.h"
 class Sensor
 {
 public:
@@ -74,6 +75,7 @@ public:
     void P2M(double x, double y, double& mx, double& my);
     bool senseCell(int x, int y);
     void senseMap(int sensor);
+    bool senseMap();
 
     void sense(double *pos);
 
@@ -81,8 +83,8 @@ public:
     double m_mPos[SIZE_STATE];
 
     info_param  ip;
-    info_sensor *is;
-
+    //info_sensor *is;
+    std::vector<info_sensor> is;
 protected:
     std::vector<BYTE> m_map;
     double m_limit[SIZE_RECT];

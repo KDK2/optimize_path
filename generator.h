@@ -64,7 +64,7 @@ public:
     };
     enum genmode{reference, prediction, stagnation};
     Generator(const info in, const Sensor& sen, const double* pos, const double* gpos);
-    Generator(const Generator& gen);
+    Generator(const Generator& gen, Sensor& sen, const double* pos);
     Generator(const Generator& gen, const double *pos);
     ~Generator();
 
@@ -80,6 +80,12 @@ public:
 
     double calcTgoal();
     double addNoise(double src, double sigma);
+    double addRealNoise(double src, double sigma);
+
+    int    rndInt(int range);
+    double rndDouble(double min,double max);
+    void   setDD(const std::vector<double>& weights);
+    int    rndDD();
 
     bool isLocalMin();
 
@@ -87,18 +93,20 @@ public:
 
     info ip;
     std::vector<path> m_rPath;
+    Sensor* s;
+    bool isArrived=false;
+    void ref();
 protected:
     void attForce(double* pos, double* f);
     void repForce(int i, double* f);
 
     void force(double* pos, double* f);
-    void ref();
     void checkMaxRef(double ref, double& dst);
+    void checkMaxRef(double ref, double* src, double& dst);
     void predict(bool bStag);
     void detLocalmin();
 
 private:
-    Sensor* s;
     double m_rPos[SIZE_STATE];
     double m_gGoal[SIZE_STATE];
     double m_tGoal[SIZE_STATE];
@@ -106,6 +114,7 @@ private:
 
     bool m_bLocalMin;
     std::mt19937 rand_gen;
+    std::discrete_distribution<> *dd=nullptr;
 };
 
 #endif // GENERATOR_H

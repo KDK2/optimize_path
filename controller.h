@@ -23,10 +23,28 @@ public:
         double cost2[4];
         double loss;
     };
+    struct t_polygon
+    {
+        double p1[SIZE_STATE-1];
+        double p2[SIZE_STATE-1];
+        double p3[SIZE_STATE-1];
+    };
+    struct particle
+    {
+        std::vector<Generator::path> p;
+        std::vector<double> c1;
+        std::vector<double> c2;
+        std::vector<double> c3;
+        std::vector<double> c4;
+        std::vector<double> c5;
+        std::vector<double> c6;
+        std::vector<double> w;
+    };
 
     enum con_state
     {
         idle,
+        test,
         localminimum,
         optimized
     };
@@ -45,6 +63,22 @@ public:
     void getGoal(double* dst,bool bGlobal);
     void checkGoal();
     bool checkGoal(std::vector<Generator::path> path,bool bGlobal);
+    void createTPolygon();
+    void createPointInTriangle(t_polygon polygon,double* dst);
+    std::vector<Generator::path> createParticle(int num);
+    void moveParticle();
+    void calcCost();
+    double cost1(std::vector<Generator::path> path);
+    double cost2(std::vector<Generator::path> path);
+    double cost3(std::vector<Generator::path> path);
+    double cost4(double* pos);
+    double cost5(double* pos);
+    double cost6(double* pos);
+    std::vector<double> calculateWeight(double w1,double w2, double w3, double w4, double w5, double w6);
+    double calcESS();
+    double calcEntropy(std::vector<double> &weights);
+    void resample();
+    bool updateParticle();
 
     bool isArrived();
 
@@ -56,16 +90,20 @@ public:
 
     std::vector<optimized_data> o;
     std::vector<Generator::path> optimized_path;
-    std::vector<Generator::path> b_path;
+    std::vector<Generator::path> origin_path;
+    std::vector<t_polygon> tPolygon;
+    particle p;
 
     double stag_pos[2];
     double con_vel[2];
     bool   bArrived;
+    bool   bFirst=true;
 
 protected:
     void initConState(double* pos);
     void setOutput(double* v);
-
+    void selectBeam(int& dst, bool direction,int src=-1);
+    void genSample(double *point1, double *point2,double *dst);
 private:
     goal temporary;
     std::vector<goal> goals;
